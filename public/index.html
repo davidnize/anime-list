@@ -4,7 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <title>Romance Anime List</title>
+    <title>Your Harem Hunter</title>
+    <meta name="description" content="Your Harem Hunter. Find every harem anime, ranked best to worst, and keep a private list." />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23140b16'/%3E%3Cpath d='M16 25s-7.2-4.4-7.2-9.2A4.1 4.1 0 0 1 16 12a4.1 4.1 0 0 1 7.2 3.8C23.2 20.6 16 25 16 25z' fill='%23ff5a95'/%3E%3C/svg%3E" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -16,9 +17,9 @@
 
     <main id="auth-screen" class="auth-screen" hidden>
       <form id="auth-form" class="auth-card" data-mode="login" novalidate>
-        <p class="eyebrow">A small shelf for favorite couples</p>
-        <h1><em>Romance</em> Anime List</h1>
-        <p class="lede">Each person gets their own list. A new account starts with twenty romance titles.</p>
+        <p class="eyebrow">Your Harem Hunter</p>
+        <h1><em>Find every</em> harem anime</h1>
+        <p class="lede">Ranked best to worst. A new account starts with a private list.</p>
         <div class="auth-toggle" role="group" aria-label="Account action">
           <button id="show-login" type="button" aria-pressed="true">Log in</button>
           <button id="show-signup" type="button" aria-pressed="false">Sign up</button>
@@ -38,13 +39,12 @@
 
     <div id="shelf" class="page" hidden>
       <header class="hero">
-        <p class="eyebrow">A small shelf for favorite couples</p>
-        <h1><em>Romance</em> Anime List</h1>
-        <p class="lede">
-          Well-known romance anime, grouped into four categories. Filter the shelf, search a
-          title, or add one of your own. Your list stays with your account.
-        </p>
+        <p class="eyebrow">Your Harem Hunter</p>
+        <h1><em>Find every</em> harem anime</h1>
+        <p class="lede">Ranked from best to worst. Save the ones you want. Your list stays on your account.</p>
       </header>
+
+      <section id="spotlight" class="spotlight" aria-live="polite"></section>
 
       <div class="account">
         <p class="account-name">Signed in as <strong id="current-user"></strong></p>
@@ -58,14 +58,14 @@
 
           <label class="field">
             <span>Title</span>
-            <input id="title" name="title" type="text" maxlength="120" placeholder="e.g. Your Name" autocomplete="off" required />
+            <input id="title" name="title" type="text" maxlength="120" placeholder="e.g. Nisekoi" autocomplete="off" required />
           </label>
 
           <label class="field">
             <span>Category</span>
             <select id="category" name="category" required>
+              <option selected>Harem</option>
               <option>Slice of Life</option>
-              <option>Harem</option>
               <option>Love Triangle</option>
               <option>Movies</option>
             </select>
@@ -100,9 +100,10 @@
         <div class="search-row">
           <label class="search">
             <span class="visually-hidden">Search your shelf</span>
-            <input id="search" type="search" placeholder="Search title, year, or note" autocomplete="off" />
+            <input id="search" type="search" placeholder="Search your list, or type Harem" autocomplete="off" />
           </label>
           <button id="search-online" class="online-go" type="button">Search online</button>
+          <button id="browse-harem" class="browse-harem" type="button">Browse all harem</button>
         </div>
         <p id="status" class="status" aria-live="polite">Showing all 20 titles.</p>
       </div>
@@ -113,6 +114,7 @@
           Find a title on MyAnimeList, then add it to a category. The shelf below filters as you type.
         </p>
         <div id="online-results" class="online-results"></div>
+        <button id="load-more" class="load-more" type="button" hidden>Load more</button>
       </section>
 
       <div id="list" class="cards" aria-live="polite"></div>

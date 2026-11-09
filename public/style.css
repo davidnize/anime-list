@@ -62,6 +62,7 @@ button {
   grid-template-columns: minmax(0, 1fr) 300px;
   grid-template-areas:
     "hero account"
+    "spotlight spotlight"
     "tools panel"
     "online panel"
     "cards panel";
@@ -174,8 +175,19 @@ h1 em {
   white-space: nowrap;
 }
 
-.online-go:hover {
-  background: rgba(255, 90, 149, 0.24);
+.online-go:hover,
+.browse-harem:hover {
+  filter: brightness(1.06);
+}
+
+.browse-harem {
+  border: 0;
+  background: var(--pink);
+  color: #fff;
+  border-radius: 12px;
+  padding: 0 16px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .search input,
@@ -206,6 +218,8 @@ h1 em {
 .primary:focus-visible,
 .ghost:focus-visible,
 .online-go:focus-visible,
+.browse-harem:focus-visible,
+.load-more:focus-visible,
 .add-row button:focus-visible,
 .delete:focus-visible {
   border-color: rgba(255, 90, 149, 0.85);
@@ -627,6 +641,71 @@ h1 em {
   border: 0;
 }
 
+.spotlight {
+  grid-area: spotlight;
+}
+
+.spotlight-card {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  background: #191221;
+  border: 1px solid rgba(255, 122, 170, 0.35);
+  border-radius: 22px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+.spotlight-card .poster {
+  width: 190px;
+  height: 270px;
+}
+
+.spotlight-kicker {
+  margin: 0;
+  color: var(--romance);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.spotlight-card h2 {
+  margin: 6px 0 0;
+  font-family: var(--serif);
+  font-size: clamp(1.8rem, 3vw, 2.5rem);
+  font-weight: 560;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.badge-ecchi {
+  display: inline-block;
+  margin-left: 8px;
+  border: 1px solid rgba(255, 122, 170, 0.85);
+  color: #ffd0e2;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
+.load-more {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  border: 1px solid rgba(255, 122, 170, 0.75);
+  background: rgba(255, 90, 149, 0.12);
+  color: #fff;
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-weight: 700;
+}
+
 @media (max-width: 860px) {
   .page {
     width: min(100% - 28px, 720px);
@@ -635,6 +714,7 @@ h1 em {
     grid-template-areas:
       "hero"
       "account"
+      "spotlight"
       "tools"
       "online"
       "cards"
@@ -649,8 +729,18 @@ h1 em {
     flex-direction: column;
   }
 
-  .online-go {
+  .online-go,
+  .browse-harem {
     padding: 12px 16px;
+  }
+
+  .spotlight-card {
+    grid-template-columns: 120px minmax(0, 1fr);
+  }
+
+  .spotlight-card .poster {
+    width: 120px;
+    height: 170px;
   }
 
   .panel {

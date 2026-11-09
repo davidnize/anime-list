@@ -10,12 +10,13 @@
 
   var state = {
     items: [],
-    category: "All",
+    category: "Harem",
     query: "",
     username: ""
   };
 
-  var onlineState = { phase: "idle", query: "", results: [] };
+  var onlineState = { phase: "idle", query: "", results: [], mode: "search", page: 0, hasMore: false, total: 0, loadingMore: false };
+  var spotlightItem = null;
   var onlineTimer = null;
   var onlineAbort = null;
   var skipJikan = false;
@@ -42,6 +43,17 @@
   resetEl.addEventListener("click", onReset);
   listEl.addEventListener("click", onListClick);
   onlineResultsEl.addEventListener("click", onOnlineAdd);
+  document.getElementById("browse-harem").addEventListener("click", onBrowseHarem);
+  document.getElementById("load-more").addEventListener("click", function () {
+    loadMoreHarem();
+  });
+  document.getElementById("spotlight").addEventListener("click", onSpotlightAdd);
+  if (window.IntersectionObserver) {
+    var moreObserver = new IntersectionObserver(function (entries) {
+      if (entries.some(function (entry) { return entry.isIntersecting; })) loadMoreHarem();
+    }, { rootMargin: "300px" });
+    moreObserver.observe(document.getElementById("load-more"));
+  }
   document.getElementById("logout").addEventListener("click", onLogout);
   document.getElementById("auth-form").addEventListener("submit", onAuthSubmit);
   document.getElementById("show-login").addEventListener("click", function () {
@@ -98,9 +110,11 @@
       document.getElementById("boot").hidden = true;
       document.getElementById("auth-screen").hidden = true;
       document.getElementById("shelf").hidden = false;
+      state.category = "Harem";
       renderShelf();
-      renderOnline();
       offerImport();
+      loadSpotlight();
+      startHaremBrowse();
     });
   }
 
@@ -151,10 +165,9 @@
     })
       .then(function (me) {
         document.getElementById("auth-passphrase").value = "";
-        state.category = "All";
+        state.category = "Harem";
         state.query = "";
         searchEl.value = "";
-        showIdleOnline();
         return openShelf(me.username);
       })
       .catch(function (err) {
@@ -168,7 +181,7 @@
       .then(function () {
         state.items = [];
         state.username = "";
-        state.category = "All";
+        state.category = "Harem";
         state.query = "";
         searchEl.value = "";
         showIdleOnline();
@@ -286,12 +299,11 @@
   function onReset() {
     api("/api/anime/reset", { method: "POST" })
       .then(function (data) {
-        state.category = "All";
+        state.category = "Harem";
         state.query = "";
         searchEl.value = "";
         formEl.reset();
         showError("");
-        showIdleOnline();
         applyList(data);
       })
       .catch(function (err) {
@@ -422,6 +434,12 @@
     }
     state.query = searchEl.value;
     var query = state.query.trim();
+    if (isHaremQuery(query)) {
+      state.category = "Harem";
+      renderShelf();
+      startHaremBrowse();
+      return;
+    }
     if (query.length < 2) {
       if (immediate && query.length > 0) {
         abortOnline();
@@ -444,8 +462,174 @@
 
   function showIdleOnline() {
     abortOnline();
-    onlineState = { phase: "idle", query: "", results: [] };
+    onlineState = { phase: "idle", query: "", results: [], mode: "search", page: 0, hasMore: false, total: 0, loadingMore: false };
     renderOnline();
+  }
+
+  function onBrowseHarem() {
+    searchEl.value = "Harem";
+    state.query = "Harem";
+    state.category = "Harem";
+    renderShelf();
+    startHaremBrowse();
+    var section = document.getElementById("online");
+    if (section && section.scrollIntoView) section.scrollIntoView({ block: "start" });
+  }
+
+  function startHaremBrowse() {
+    abortOnline();
+    onlineState = {
+      phase: "loading",
+      query: "Harem",
+      results: [],
+      mode: "harem",
+      page: 0,
+      hasMore: false,
+      total: 0,
+      loadingMore: true
+    };
+    renderOnline();
+    api("/api/harem?page=1&limit=20")
+      .then(function (data) {
+        if (onlineState.mode !== "harem") return;
+        onlineState.phase = data.items && data.items.length ? "results" : "empty";
+        onlineState.results = data.items || [];
+        onlineState.page = data.page || 1;
+        onlineState.hasMore = !!data.hasMore;
+        onlineState.total = data.total || onlineState.results.length;
+        onlineState.loadingMore = false;
+        renderOnline();
+      })
+      .catch(function (err) {
+        if (onlineState.mode !== "harem") return;
+        onlineState.phase = "error";
+        onlineState.loadingMore = false;
+        onlineState.results = [];
+        renderOnline();
+        if (err.status !== 401) showError("");
+      });
+  }
+
+  function loadMoreHarem() {
+    if (onlineState.mode !== "harem" || !onlineState.hasMore || onlineState.loadingMore) return;
+    onlineState.loadingMore = true;
+    var button = document.getElementById("load-more");
+    button.textContent = "Loading…";
+    var next = onlineState.page + 1;
+    api("/api/harem?page=" + next + "&limit=20")
+      .then(function (data) {
+        if (onlineState.mode !== "harem") return;
+        var start = onlineState.results.length;
+        var items = data.items || [];
+        onlineState.results = onlineState.results.concat(items);
+        onlineState.page = data.page || next;
+        onlineState.hasMore = !!data.hasMore;
+        onlineState.total = data.total || onlineState.total;
+        onlineState.loadingMore = false;
+        items.forEach(function (item, index) {
+          onlineResultsEl.appendChild(renderOnlineCard(item, start + index));
+        });
+        updateHaremChrome();
+      })
+      .catch(function () {
+        onlineState.loadingMore = false;
+        button.textContent = "Load more";
+      });
+  }
+
+  function loadSpotlight() {
+    api("/api/harem/spotlight")
+      .then(function (data) {
+        spotlightItem = data.item;
+        renderSpotlight(data.week, data.item);
+      })
+      .catch(function () {
+        document.getElementById("spotlight").hidden = true;
+      });
+  }
+
+  function renderSpotlight(week, item) {
+    var root = document.getElementById("spotlight");
+    root.hidden = false;
+    root.replaceChildren();
+    var card = document.createElement("article");
+    card.className = "spotlight-card";
+    if (item.poster) card.appendChild(posterImage(item.poster));
+    var body = document.createElement("div");
+    var kicker = document.createElement("p");
+    kicker.className = "spotlight-kicker";
+    kicker.textContent = "Best harem of the week";
+    var title = document.createElement("h2");
+    title.textContent = item.title;
+    if (item.ecchi) title.appendChild(ecchiBadge());
+    var meta = document.createElement("p");
+    meta.className = "meta";
+    meta.textContent = metaLine(item);
+    var synopsis = document.createElement("p");
+    synopsis.className = "synopsis";
+    synopsis.textContent = item.synopsis || "No synopsis yet.";
+    var row = document.createElement("div");
+    row.className = "add-row";
+    var saved = alreadySaved(item);
+    var add = document.createElement("button");
+    add.type = "button";
+    add.id = "spotlight-add";
+    add.textContent = saved ? "On your shelf" : "Add to my list";
+    add.disabled = saved;
+    row.appendChild(add);
+    body.append(kicker, title, meta, synopsis, row);
+    card.appendChild(body);
+    root.appendChild(card);
+  }
+
+  function onSpotlightAdd(event) {
+    var button = event.target.closest("#spotlight-add");
+    if (!button || button.disabled || !spotlightItem || alreadySaved(spotlightItem)) return;
+    api("/api/anime", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "mal-" + spotlightItem.malId,
+        malId: spotlightItem.malId,
+        title: spotlightItem.title,
+        year: spotlightItem.year,
+        category: "Harem",
+        note: spotlightItem.synopsis || "",
+        poster: spotlightItem.poster
+      })
+    })
+      .then(function (data) {
+        applyList(data);
+        renderSpotlight(isoWeekNow(), spotlightItem);
+      })
+      .catch(function (err) {
+        if (err.status === 401) showAuth();
+        else showError(err.message || "Could not add that title.");
+      });
+  }
+
+  function isoWeekNow() {
+    var date = new Date();
+    var d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    var day = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - day);
+    var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+  }
+
+  function ecchiBadge() {
+    var badge = document.createElement("span");
+    badge.className = "badge-ecchi";
+    badge.textContent = "Ecchi";
+    return badge;
+  }
+
+  function updateHaremChrome() {
+    document.getElementById("online-heading").textContent = "Every harem anime";
+    onlineStatusEl.textContent =
+      "Showing " + onlineState.results.length + " of " + onlineState.total + " harem titles, best to worst.";
+    var button = document.getElementById("load-more");
+    button.hidden = !onlineState.hasMore;
+    button.textContent = "Load more";
   }
 
   function abortOnline() {
@@ -576,7 +760,16 @@
 
   function renderOnline() {
     var query = onlineState.query;
-    if (onlineState.phase === "loading") {
+    var heading = document.getElementById("online-heading");
+    var more = document.getElementById("load-more");
+    heading.textContent = onlineState.mode === "harem" ? "Every harem anime" : "Search online";
+    if (onlineState.mode === "harem" && onlineState.phase === "loading") {
+      onlineStatusEl.textContent = "Loading every harem title, best to worst\u2026";
+    } else if (onlineState.mode === "harem" && onlineState.phase === "results") {
+      updateHaremChrome();
+    } else if (onlineState.mode === "harem" && onlineState.phase === "empty") {
+      onlineStatusEl.textContent = "No harem titles came back.";
+    } else if (onlineState.phase === "loading") {
       onlineStatusEl.textContent = "Looking up \u201c" + query + "\u201d\u2026";
     } else if (onlineState.phase === "empty") {
       onlineStatusEl.textContent = "No titles found online for \u201c" + query + "\u201d.";
@@ -592,9 +785,10 @@
         count + " online " + (count === 1 ? "result" : "results") + " for \u201c" + query + "\u201d.";
     } else {
       onlineStatusEl.textContent =
-        "Find a title on MyAnimeList, then add it to a category. The shelf below filters as you type.";
+        "Browse all harem, or search a title on MyAnimeList. The shelf below is your list.";
     }
 
+    more.hidden = !(onlineState.mode === "harem" && onlineState.phase === "results" && onlineState.hasMore);
     onlineResultsEl.replaceChildren();
     if (onlineState.phase !== "results") return;
     onlineState.results.forEach(function (result, index) {
@@ -610,6 +804,7 @@
     var body = document.createElement("div");
     var title = document.createElement("h3");
     title.textContent = result.title;
+    if (result.ecchi) title.appendChild(ecchiBadge());
 
     var meta = document.createElement("p");
     meta.className = "meta";
@@ -617,7 +812,7 @@
 
     var synopsis = document.createElement("p");
     synopsis.className = "synopsis";
-    synopsis.textContent = result.synopsis;
+    synopsis.textContent = shortSynopsis(result.synopsis);
 
     var row = document.createElement("div");
     row.className = "add-row";
@@ -630,7 +825,7 @@
       var option = document.createElement("option");
       option.value = category;
       option.textContent = category;
-      if (category === (result.type === "Movie" ? "Movies" : "Slice of Life")) option.selected = true;
+      if (category === (onlineState.mode === "harem" ? "Harem" : result.type === "Movie" ? "Movies" : "Harem")) option.selected = true;
       select.appendChild(option);
     });
     if (saved) select.disabled = true;
@@ -686,9 +881,11 @@
 
   function metaLine(result) {
     var bits = [];
-    if (result.year) bits.push(String(result.year));
-    if (result.type) bits.push(result.type);
     if (result.score != null) bits.push("Score " + formatScore(result.score));
+    else if (result.malId) bits.push("No score");
+    if (result.type) bits.push(result.type);
+    if (result.year) bits.push(String(result.year));
+    if (result.episodes) bits.push(result.episodes + (result.episodes === 1 ? " episode" : " episodes"));
     return bits.join(" \u00b7 ");
   }
 
@@ -731,11 +928,16 @@
     return null;
   }
 
+  function isHaremQuery(query) {
+    return query.trim().toLowerCase() === "harem";
+  }
+
   function visibleItems() {
     var query = state.query.trim().toLowerCase();
+    var browsing = isHaremQuery(query);
     return state.items.filter(function (item) {
       if (state.category !== "All" && item.category !== state.category) return false;
-      if (!query) return true;
+      if (!query || browsing) return true;
       var haystack = [item.title, item.year ? String(item.year) : "", item.note]
         .join(" ")
         .toLowerCase();

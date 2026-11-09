@@ -8,6 +8,7 @@ const rateLimit = require("express-rate-limit");
 const bcrypt = require("bcryptjs");
 const { Pool } = require("pg");
 const { CATEGORIES, SEED } = require("./seed");
+const { fetchCatalog, pickSpotlight } = require("./harem");
 
 const PORT = Number(process.env.PORT) || 3000;
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -54,6 +55,8 @@ app.post("/api/anime", asyncRoute(requireUser), asyncRoute(addAnime));
 app.post("/api/anime/reset", asyncRoute(requireUser), asyncRoute(resetAnime));
 app.put("/api/anime", asyncRoute(requireUser), asyncRoute(replaceAnime));
 app.delete("/api/anime/:id", asyncRoute(requireUser), asyncRoute(deleteAnime));
+app.get("/api/harem/spotlight", asyncRoute(haremSpotlight));
+app.get("/api/harem", asyncRoute(haremPage));
 
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -117,6 +120,155 @@ async function setupDatabase() {
     )
   `);
   await pool.query("DELETE FROM sessions WHERE expires_at < now()");
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS harem_catalog (
+      mal_id INTEGER PRIMARY KEY,
+      title TEXT NOT NULL,
+      score DOUBLE PRECISION,
+      type TEXT,
+      year INTEGER,
+      episodes INTEGER,
+      synopsis TEXT,
+      poster TEXT,
+      rating TEXT,
+      ecchi BOOLEAN NOT NULL DEFAULT FALSE,
+      genre_ids INTEGER[] NOT NULL DEFAULT '{}',
+      position INTEGER NOT NULL,
+      refreshed_at TIMESTAMPTZ NOT NULL
+    )
+  `);
+}
+
+const HAREM_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+let haremRefresh = null;
+
+async function haremSpotlight(req, res) {
+  await ensureHaremCatalog();
+  const ranked = await pool.query(
+    `SELECT mal_id, title, score, type, year, episodes, synopsis, poster, ecchi
+     FROM harem_catalog
+     WHERE score IS NOT NULL
+     ORDER BY position ASC
+     LIMIT 52`
+  );
+  const picked = pickSpotlight(ranked.rows.map(rowToHarem), new Date());
+  if (!picked) return res.status(503).json({ error: "The harem list is not ready yet." });
+  res.json({ week: picked.week, item: picked.item });
+}
+
+async function haremPage(req, res) {
+  await ensureHaremCatalog();
+  const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
+  const page = Math.max(Number(req.query.page) || 1, 1);
+  const offset = (page - 1) * limit;
+  const totalResult = await pool.query("SELECT COUNT(*)::int AS total FROM harem_catalog");
+  const total = totalResult.rows[0].total;
+  const rows = await pool.query(
+    `SELECT mal_id, title, score, type, year, episodes, synopsis, poster, ecchi
+     FROM harem_catalog
+     ORDER BY position ASC
+     LIMIT $1 OFFSET $2`,
+    [limit, offset]
+  );
+  res.json({
+    page: page,
+    limit: limit,
+    total: total,
+    hasMore: offset + rows.rows.length < total,
+    items: rows.rows.map(rowToHarem)
+  });
+}
+
+function rowToHarem(row) {
+  return {
+    malId: row.mal_id,
+    title: row.title,
+    score: row.score,
+    type: row.type,
+    year: row.year,
+    episodes: row.episodes,
+    synopsis: row.synopsis,
+    poster: row.poster,
+    ecchi: row.ecchi
+  };
+}
+
+async function ensureHaremCatalog() {
+  const found = await pool.query("SELECT COUNT(*)::int AS total, MAX(refreshed_at) AS refreshed_at FROM harem_catalog");
+  const total = found.rows[0].total;
+  const refreshedAt = found.rows[0].refreshed_at ? new Date(found.rows[0].refreshed_at).getTime() : 0;
+  const fresh = total > 0 && Date.now() - refreshedAt < HAREM_MAX_AGE_MS;
+  if (fresh) return;
+  if (total > 0) {
+    refreshHaremCatalog().catch(function (err) {
+      console.error("Harem refresh failed", err);
+    });
+    return;
+  }
+  await refreshHaremCatalog();
+}
+
+function refreshHaremCatalog() {
+  if (!haremRefresh) {
+    haremRefresh = writeHaremCatalog().finally(function () {
+      haremRefresh = null;
+    });
+  }
+  return haremRefresh;
+}
+
+async function writeHaremCatalog() {
+  const client = await pool.connect();
+  try {
+    await client.query("SELECT pg_advisory_lock(354235)");
+    const found = await client.query("SELECT COUNT(*)::int AS total, MAX(refreshed_at) AS refreshed_at FROM harem_catalog");
+    const refreshedAt = found.rows[0].refreshed_at ? new Date(found.rows[0].refreshed_at).getTime() : 0;
+    if (found.rows[0].total > 0 && Date.now() - refreshedAt < HAREM_MAX_AGE_MS) return;
+    const items = await fetchCatalog();
+    if (!items.length) throw new Error("Harem catalog came back empty");
+    const refreshed = new Date();
+    await client.query("BEGIN");
+    await client.query("DELETE FROM harem_catalog");
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      await client.query(
+        `INSERT INTO harem_catalog
+          (mal_id, title, score, type, year, episodes, synopsis, poster, rating, ecchi, genre_ids, position, refreshed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        [
+          item.malId,
+          item.title,
+          item.score,
+          item.type,
+          item.year,
+          item.episodes,
+          item.synopsis,
+          item.poster,
+          item.rating,
+          item.ecchi,
+          item.genreIds,
+          i,
+          refreshed
+        ]
+      );
+    }
+    await client.query("COMMIT");
+    console.log("Cached " + items.length + " harem titles");
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackErr) {
+      // The transaction may not have started.
+    }
+    throw err;
+  } finally {
+    try {
+      await client.query("SELECT pg_advisory_unlock(354235)");
+    } catch (unlockErr) {
+      // The connection is closing anyway.
+    }
+    client.release();
+  }
 }
 
 function asyncRoute(fn) {

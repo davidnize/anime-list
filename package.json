@@ -2,11 +2,11 @@
   "name": "romance-anime-list",
   "version": "1.0.0",
   "private": true,
-  "description": "A small shelf of romance anime, with one private list per account.",
+  "description": "Find every harem anime, ranked best to worst, with a private list per account.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node test/privacy.js"
+    "test": "node test/privacy.js && node test/harem.js"
   },
   "engines": {
     "node": ">=20"
